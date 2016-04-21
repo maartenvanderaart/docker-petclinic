@@ -1,0 +1,64 @@
+version: "2"
+networks:
+  petclinic:
+    driver: overlay
+services:
+  mysql:
+    image: mysql:5.7.8
+    networks:
+      - petclinic
+    environment:
+      - MYSQL_ROOT_PASSWORD=petclinic
+      - MYSQL_DATABASE=petclinic
+    ports:
+      - "3306:3306"
+  loadbalancer:
+    image: maartenvanderaart/petclinic_loadbalancer:latest
+    networks:
+      - petclinic
+    ports:
+      - "80:80"
+    environment:
+      - "affinity:container!=*loadbalancer*"
+    depends_on:
+      - mysql
+      - consul
+      - registrator
+  appserver:
+    image: maartenvanderaart/petclinic_appserver:latest
+    networks:
+      - petclinic
+    environment:
+      SERVICE_80_NAME: http
+      SERVICE_NAME: app
+      SERVICE_TAGS: production
+    ports:
+      - "8080"
+    depends_on:
+      - mysql
+      - loadbalancer
+      - consul
+      - registrator
+  consul:
+    image: progrium/consul:latest
+    networks:
+      - petclinic
+    command: -server -bootstrap 
+    ports:
+      - "8300:8300"
+      - "8400:8400"
+      - "8500:8500"
+      - "8600:53/udp"
+    environment:
+      - "affinity:container!=*consul*"
+  registrator:
+    image: gliderlabs/registrator:master
+    networks:
+      - petclinic
+    command: consul://consul:8500
+    environment:
+      - "affinity:container!=*registrator*"
+    volumes:
+      - "/var/run/docker.sock:/tmp/docker.sock"
+    depends_on:
+      - consul
